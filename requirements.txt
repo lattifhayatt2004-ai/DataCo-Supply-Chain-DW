@@ -1,6 +1,14 @@
+# ETL et manipulation de données
 pandas>=2.0.0
 python-dateutil>=2.8.2
+
+# Connexion PostgreSQL
 psycopg2-binary>=2.9.9
 SQLAlchemy>=2.0.0
+
+# Notebooks et exploration
 jupyterlab>=4.0.0
+
+# Visualisation (optionnel, si tu as fait des plots dans le notebook)
 matplotlib>=3.8.0
+seaborn>=0.13.0

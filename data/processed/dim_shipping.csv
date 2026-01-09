@@ -1,13 +1,13 @@
-Shipping Mode,Delivery Status,Late_delivery_risk,shipping_id
-Standard Class,Advance shipping,0,1
-Standard Class,Late delivery,1,2
-Standard Class,Shipping on time,0,3
-Standard Class,Shipping canceled,0,4
-First Class,Late delivery,1,5
-Second Class,Late delivery,1,6
-Second Class,Shipping canceled,0,7
-Same Day,Shipping on time,0,8
-Same Day,Late delivery,1,9
-Same Day,Shipping canceled,0,10
-Second Class,Shipping on time,0,11
-First Class,Shipping canceled,0,12
+shipping_id,Shipping Mode,Delivery Status,Late_delivery_risk
+1,Standard Class,Advance shipping,0
+2,Standard Class,Late delivery,1
+3,Standard Class,Shipping on time,0
+4,Standard Class,Shipping canceled,0
+5,First Class,Late delivery,1
+6,Second Class,Late delivery,1
+7,Second Class,Shipping canceled,0
+8,Same Day,Shipping on time,0
+9,Same Day,Late delivery,1
+10,Same Day,Shipping canceled,0
+11,Second Class,Shipping on time,0
+12,First Class,Shipping canceled,0

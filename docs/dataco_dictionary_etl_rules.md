@@ -1,191 +1,211 @@
-# Fiche technique – Pipeline ETL DataCo
+# DataCo – Data Dictionary & ETL Rules
 
-## 1. Sources utilisées
+## 1. Vue d’ensemble
 
-- `DataCoSupplyChainDataset.csv`  
-  - Fichier transactionnel principal (commandes, clients, produits, livraisons, ventes, profits).
-- `DescriptionDataCoSupplyChain.csv`  
-  - Dictionnaire de données descriptif, utilisé pour comprendre le sens des colonnes.
-- `tokenized_access_logs.csv`  
-  - Logs techniques de navigation, **hors périmètre V1** (non utilisés dans l’ETL).
+Ce document décrit :
+- les **tables finales** produites par le pipeline ETL (`etl_dataco.py`),
+- le **grain**, les **colonnes**, et les **règles de transformation**,
+- la cohérence entre le script ETL et le Data Warehouse.
 
----
-
-## 2. Staging – DataFrame `df_stg`
-
-Point de départ : `df` = lecture brute de `DataCoSupplyChainDataset.csv`.
-
-### 2.1 Nettoyage / colonnes ignorées
-
-Colonnes supprimées dans la zone de staging (pas chargées dans le DW) :
-
-- `Product Description` : 100 % de valeurs manquantes. 
-- `Order Zipcode` : trop de valeurs manquantes pour être exploitable en V1.
-- `Customer Email` : non nécessaire pour l’analyse décisionnelle.
-- `Customer Password` : sensible, hors périmètre décisionnel.
-
-### 2.2 Conversions de types
-
-Ajout de deux colonnes datetime :
-
-- `order_date`  
-  - Conversion de `order date (DateOrders)` via `pd.to_datetime(..., infer_datetime_format=True)`.
-- `shipping_date`  
-  - Conversion de `shipping date (DateOrders)` avec la même méthode.
-
-Grain conservé :  
-> **1 ligne de `df_stg` = 1 ligne de commande (Order Item Id)**.
+Pipeline concerné : **ETL V1 – pandas**  
+Source principale : `DataCoSupplyChainDataset.csv`
 
 ---
 
-## 3. Dimensions construites
+## 2. Zone de staging (`df_stg`)
+
+### 2.1 Source
+- Lecture brute du fichier `DataCoSupplyChainDataset.csv`
+- Encodage : `latin1`
+
+### 2.2 Colonnes supprimées
+
+| Colonne | Raison |
+|------|------|
+| Product Description | 100 % valeurs manquantes |
+| Order Zipcode | Trop de valeurs manquantes |
+| Customer Email | Donnée sensible, non analytique |
+| Customer Password | Donnée sensible, hors périmètre |
+
+### 2.3 Colonnes ajoutées
+
+| Colonne | Règle |
+|------|------|
+| order_date | Conversion de `order date (DateOrders)` en datetime |
+| shipping_date | Conversion de `shipping date (DateOrders)` en datetime |
+
+**Grain** :  
+1 ligne = 1 *Order Item*
+
+---
+
+## 3. Dimensions
 
 ### 3.1 `dim_customer`
 
-- **Grain** : 1 ligne par client (`Customer Id`).  
-- **Construction** : `drop_duplicates` sur `Customer Id`.  
-- **Colonnes** :
-  - `customer_id` ← `Customer Id`
-  - `fname` ← `Customer Fname`
-  - `lname` ← `Customer Lname`
-  - `segment` ← `Customer Segment`
-  - `country` ← `Customer Country`
-  - `city` ← `Customer City`
-  - `state` ← `Customer State`
-  - `street` ← `Customer Street`
-  - `zipcode` ← `Customer Zipcode`
+**Grain** : 1 ligne par client
 
-**Usage** : analyses par client, segment, pays, ville (chiffre d’affaires, profit, volume…).
+| Colonne | Source |
+|------|------|
+| customer_id | Customer Id |
+| fname | Customer Fname |
+| lname | Customer Lname |
+| segment | Customer Segment |
+| country | Customer Country |
+| city | Customer City |
+| state | Customer State |
+| street | Customer Street |
+| zipcode | Customer Zipcode |
+
+**Règle** :
+- `drop_duplicates` sur `Customer Id`
 
 ---
 
 ### 3.2 `dim_product`
 
-- **Grain** : 1 ligne par produit (`Product Card Id`).  
-- **Construction** : `drop_duplicates` sur `Product Card Id`.  
-- **Colonnes** :
-  - `product_id` ← `Product Card Id`
-  - `product_name` ← `Product Name`
-  - `category_id` ← `Category Id`
-  - `category_name` ← `Category Name`
-  - `department_id` ← `Department Id`
-  - `department_name` ← `Department Name`
-  - `product_category_id` ← `Product Category Id`
-  - `base_price` ← `Product Price`
+**Grain** : 1 ligne par produit
 
-**Usage** : analyses par produit, catégorie, département (top sellers, produits rentables ou non).
+| Colonne | Source |
+|------|------|
+| product_id | Product Card Id |
+| product_name | Product Name |
+| category_id | Category Id |
+| category_name | Category Name |
+| department_id | Department Id |
+| department_name | Department Name |
+| product_category_id | Product Category Id |
+| base_price | Product Price |
+
+**Règle** :
+- `drop_duplicates` sur `Product Card Id`
 
 ---
 
 ### 3.3 `dim_time`
 
-- **Grain** : 1 ligne par date de commande.  
-- **Construction** : `drop_duplicates` sur `order_date`.  
-- **Colonnes** :
-  - `date_id` = format `YYYYMMDD` dérivé de `order_date`
-  - `order_date`
-  - `year`
-  - `month`
-  - `day`
+**Grain** : 1 ligne par date de commande
 
-**Usage** : analyses temporelles (année, mois, jour, tendances, saisonnalité).
+| Colonne | Règle |
+|------|------|
+| date_id | `YYYYMMDD` dérivé de `order_date` |
+| order_date | Date normalisée (00:00:00) |
+| year | Année |
+| month | Mois |
+| day | Jour |
+
+**Règle** :
+- `drop_duplicates` sur `order_date`
 
 ---
 
 ### 3.4 `dim_location`
 
-- **Grain** : combinaison de localisation.  
-- **Construction** : `drop_duplicates` sur les colonnes de localisation.  
-- **Colonnes** :
-  - `location_id` = index + 1 (surrogate key)
-  - `Customer Country`
-  - `Customer City`
-  - `Order City`
-  - `Order Region`
-  - `Market`
-  - `Latitude`
-  - `Longitude`
+**Grain** : combinaison géographique
 
-**Usage** : analyses géographiques (pays, ville, région, marché, cartographie).
+| Colonne | Source |
+|------|------|
+| location_id | Surrogate key (index + 1) |
+| Customer Country | Customer Country |
+| Customer City | Customer City |
+| Order City | Order City |
+| Order Region | Order Region |
+| Market | Market |
+| Latitude | Latitude |
+| Longitude | Longitude |
 
 ---
 
 ### 3.5 `dim_shipping`
 
-- **Grain** : combinaison mode/statut/risque.  
-- **Construction** : `drop_duplicates` sur `Shipping Mode`, `Delivery Status`, `Late_delivery_risk`.  
-- **Colonnes** :
-  - `shipping_id` = index + 1
-  - `Shipping Mode`
-  - `Delivery Status`
-  - `Late_delivery_risk`
+**Grain** : combinaison logistique
 
-**Usage** : analyses logistiques (taux de retard par mode d’expédition et statut).
+| Colonne | Source |
+|------|------|
+| shipping_id | Surrogate key (index + 1) |
+| Shipping Mode | Shipping Mode |
+| Delivery Status | Delivery Status |
+| Late_delivery_risk | Late_delivery_risk |
 
 ---
 
 ## 4. Table de faits `fact_orders`
 
-### 4.1 Grain et clés
+### 4.1 Grain
 
-- **Grain** : 1 ligne par **Order Item**.  
-- **Clés** :
-  - `order_item_id` ← `Order Item Id`
-  - `order_id` ← `Order Id`
-  - `customer_id` ← `Order Customer Id` (lien vers `dim_customer.customer_id`)
-  - `product_id` ← `Product Card Id` (lien vers `dim_product.product_id`)
-  - `order_date` ← `order_date`
-  - `date_id` ← joint avec `dim_time` sur `order_date`
+1 ligne = 1 *Order Item*
 
-Les informations de localisation (`order_city`, `order_region`, `Market`) et de shipping (`Shipping Mode`, `Delivery Status`, `Late_delivery_risk`) sont incluses pour permettre les joins logiques avec `dim_location` et `dim_shipping`.
+### 4.2 Clés
 
-### 4.2 Mesures de base
-
-Colonnes quantitatives conservées dans `fact_orders` :
-
-- `quantity` ← `Order Item Quantity`
-- `unit_price` ← `Order Item Product Price`
-- `discount_amount` ← `Order Item Discount`
-- `discount_rate` ← `Order Item Discount Rate`
-- `line_total` ← `Order Item Total`
-- `Sales`
-- `order_benefit` ← `Benefit per order`
-- `order_profit` ← `Order Profit Per Order`
-- `days_shipping_real` ← `Days for shipping (real)`
-- `days_shipping_sched` ← `Days for shipment (scheduled)`
-
-### 4.3 Mesures dérivées
-
-- `delay_days`  
-  - Formule :  
-    - `delay_days = days_shipping_real − days_shipping_sched`  
-  - Interprétation :  
-    - > 0 : retard  
-    - = 0 : à l’heure  
-    - < 0 : livré en avance
-
-- `margin_ratio`  
-  - Formule :  
-    - `margin_ratio = order_profit / Sales` si `Sales > 0`, sinon `NULL`.  
-  - Interprétation :  
-    - Indicateur de rentabilité relative par ligne de commande.
+| Colonne | Source |
+|------|------|
+| order_item_id | Order Item Id |
+| order_id | Order Id |
+| customer_id | Order Customer Id |
+| product_id | Product Card Id |
+| order_date | order_date |
+| date_id | Jointure avec `dim_time` |
 
 ---
 
-## 5. Contrôles qualité intégrés
+### 4.3 Attributs descriptifs
 
-Dans le script `etl_dataco.py`, avant export des CSV :
-
-- **Check 1 – Volume**  
-  - `len(fact_orders) == len(df_stg)`  
-  - Vérifie qu’aucune ligne n’a été perdue lors de la construction de la fact table.
-
-- **Check 2 – Intégrité clients**  
-  - Tous les `customer_id` de `fact_orders` existent dans `dim_customer.customer_id`.
-
-- **Check 3 – Intégrité produits**  
-  - Tous les `product_id` de `fact_orders` existent dans `dim_product.product_id`.
-
-Si un check échoue, le script ETL s’arrête (assertion) afin de ne pas produire des tables incohérentes.
+| Colonne |
+|------|
+| order_city |
+| order_region |
+| market |
+| shipping_mode |
+| delivery_status |
+| late_delivery_risk |
 
 ---
+
+### 4.4 Mesures
+
+| Colonne | Source |
+|------|------|
+| quantity | Order Item Quantity |
+| unit_price | Order Item Product Price |
+| discount_amount | Order Item Discount |
+| discount_rate | Order Item Discount Rate |
+| line_total | Order Item Total |
+| sales | Sales |
+| order_benefit | Benefit per order |
+| order_profit | Order Profit Per Order |
+| days_shipping_real | Days for shipping (real) |
+| days_shipping_sched | Days for shipment (scheduled) |
+
+---
+
+### 4.5 Mesures dérivées
+
+| Colonne | Règle |
+|------|------|
+| delay_days | days_shipping_real − days_shipping_sched |
+| margin_ratio | order_profit / sales si sales > 0 |
+
+---
+
+## 5. Contrôles qualité ETL
+
+| Check | Description |
+|------|------|
+| Volume | `len(fact_orders) == len(df_stg)` |
+| Clients | Tous les `customer_id` existent dans `dim_customer` |
+| Produits | Tous les `product_id` existent dans `dim_product` |
+
+En cas d’échec, l’ETL s’arrête via `assert`.
+
+---
+
+## 6. Sorties du pipeline
+
+Fichiers générés dans `data/processed/` :
+
+- `dim_customer.csv`
+- `dim_product.csv`
+- `dim_time.csv`
+- `dim_location.csv`
+- `dim_shipping.csv`
+- `fact_orders.csv`

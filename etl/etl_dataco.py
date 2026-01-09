@@ -79,20 +79,25 @@ def build_dim_product(df_stg: pd.DataFrame) -> pd.DataFrame:
     )
     return dim_product
 
-def build_dim_time(df_stg: pd.DataFrame) -> pd.DataFrame:
-    time_order = (
-        df_stg[["order_date"]]
-        .dropna()
-        .drop_duplicates()
-        .sort_values("order_date")
-    )
+def build_dim_time(df_stg):
+    # Extraire seulement la partie DATE (sans heure) mais garder en datetime
+    time_order = df_stg[["order_date"]].dropna().copy()
+    time_order["order_date"] = pd.to_datetime(time_order["order_date"]).dt.normalize()  # minuit
+    
+    # Supprimer les doublons (un seul enregistrement par date unique)
+    time_order = time_order.drop_duplicates(subset=["order_date"]).sort_values("order_date")
+    
+    # Créer les colonnes dérivées
     time_order["date_id"] = time_order["order_date"].dt.strftime("%Y%m%d").astype(int)
     time_order["year"] = time_order["order_date"].dt.year
     time_order["month"] = time_order["order_date"].dt.month
     time_order["day"] = time_order["order_date"].dt.day
     
-    dim_time= time_order[["date_id","order_date", "year", "month", "day"]]
+    # Garder seulement les colonnes finales
+    dim_time = time_order[["date_id", "order_date", "year", "month", "day"]].reset_index(drop=True)
+    
     return dim_time
+
 
 def build_dim_location(df_stg: pd.DataFrame) -> pd.DataFrame:
     dim_location = (
@@ -109,6 +114,16 @@ def build_dim_location(df_stg: pd.DataFrame) -> pd.DataFrame:
     .reset_index(drop=True)
     )
     dim_location["location_id"]= dim_location.index + 1
+    dim_location = dim_location[[
+        "location_id",
+        "Customer Country",
+        "Customer City",
+        "Order City",
+        "Order Region",
+        "Market",
+        "Latitude",
+        "Longitude",
+    ]]
     return dim_location
 
 def build_dim_shipping(df_stg):
@@ -122,6 +137,12 @@ def build_dim_shipping(df_stg):
         .reset_index(drop=True)
     )
     dim_shipping["shipping_id"] = dim_shipping.index + 1
+    dim_shipping = dim_shipping[[
+        "shipping_id",
+        "Shipping Mode",
+        "Delivery Status",
+        "Late_delivery_risk",
+    ]]
     return dim_shipping
 
 def build_fact_orders(df_stg, dim_time):
@@ -155,31 +176,41 @@ def build_fact_orders(df_stg, dim_time):
         "Product Card Id": "product_id",
         "Order City": "order_city",
         "Order Region": "order_region",
+        "Market": "market",                              # ← AJOUTER
+        "Shipping Mode": "shipping_mode",                # ← AJOUTER
+        "Delivery Status": "delivery_status",            # ← AJOUTER
+        "Late_delivery_risk": "late_delivery_risk",      # ← garder tel quel
         "Order Item Quantity": "quantity",
         "Order Item Product Price": "unit_price",
         "Order Item Discount": "discount_amount",
         "Order Item Discount Rate": "discount_rate",
         "Order Item Total": "line_total",
+        "Sales": "sales",                                # ← AJOUTER
         "Benefit per order": "order_benefit",
         "Order Profit Per Order": "order_profit",
         "Days for shipping (real)": "days_shipping_real",
         "Days for shipment (scheduled)": "days_shipping_sched",
     })
 
-    # join avec dim_time pour ajouter date_id
+    # NORMALISER order_date
+    fact["order_date"] = pd.to_datetime(fact["order_date"]).dt.normalize()
+    
+    # join avec dim_time
     fact = fact.merge(
         dim_time[["date_id", "order_date"]],
         on="order_date",
         how="left"
     )
 
+    # mesures dérivées
     fact["delay_days"] = fact["days_shipping_real"] - fact["days_shipping_sched"]
     fact["margin_ratio"] = fact.apply(
-        lambda row: row["order_profit"] / row["Sales"]
-        if row["Sales"] not in (0, None)
+        lambda row: row["order_profit"] / row["sales"]
+        if row["sales"] not in (0, None)
         else None,
         axis=1
     )
+    
     return fact
 
 def main():
