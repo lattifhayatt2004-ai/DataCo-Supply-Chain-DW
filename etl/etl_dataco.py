@@ -1,8 +1,9 @@
 import pandas as pd
 from pathlib import Path
 
-RAW_DIR = Path("/data/raw")
-PROCESSED_DIR = Path("/data/processed")
+BASE_DIR = Path(__file__).resolve().parent.parent
+RAW_DIR = BASE_DIR/"data"/"raw"
+PROCESSED_DIR = BASE_DIR/"data"/"processed"
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_raw() :
@@ -19,8 +20,8 @@ def build_staging(df: pd.DataFrame) -> pd.DataFrame:
     ]
     df_stg= df.drop(columns=cols_to_drop, errors="ignore")
     
-    df_stg['Order Date'] = pd.to_datetime(df_stg['Order date (DateOders)'], errors='coerce', infer_datetime_format=True,)
-    df_stg["shipping_date"] = pd.to_datetime(df_stg["Shipping date (DateOrders)"], errors='coerce', infer_datetime_format=True,)
+    df_stg['order_date'] = pd.to_datetime(df_stg['order date (DateOrders)'], errors='coerce', infer_datetime_format=True,)
+    df_stg["shipping_date"] = pd.to_datetime(df_stg["shipping date (DateOrders)"], errors='coerce', infer_datetime_format=True,)
     return df_stg
 
 def build_dim_customer(df_stg: pd.DataFrame) -> pd.DataFrame:
