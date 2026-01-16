@@ -31,7 +31,8 @@ Supply_Chain_ETL_DW_Power_BI/
 │   └── create_tables_dw.sql       # Création des tables DW (schéma en étoile)
 ├── docs/
 │   └── data_dictionary_etl_rules.md   # Dictionnaire + règles ETL / mapping
-├── reports/
+│   └── visualisation.pdf 
+├── Visualisation/
 │   └── dataco_powerbi.pbix        # Dashboards Power BI (exemple de rapport)
 ├── README.md
 └── requirements.txt
