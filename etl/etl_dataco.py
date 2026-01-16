@@ -20,8 +20,8 @@ def build_staging(df: pd.DataFrame) -> pd.DataFrame:
     ]
     df_stg= df.drop(columns=cols_to_drop, errors="ignore")
     
-    df_stg['order_date'] = pd.to_datetime(df_stg['order date (DateOrders)'], errors='coerce', infer_datetime_format=True,)
-    df_stg["shipping_date"] = pd.to_datetime(df_stg["shipping date (DateOrders)"], errors='coerce', infer_datetime_format=True,)
+    df_stg['order_date'] = pd.to_datetime(df_stg['order date (DateOrders)'], errors='coerce',)
+    df_stg["shipping_date"] = pd.to_datetime(df_stg["shipping date (DateOrders)"], errors='coerce',)
     return df_stg
 
 def build_dim_customer(df_stg: pd.DataFrame) -> pd.DataFrame:
@@ -102,29 +102,28 @@ def build_dim_time(df_stg):
 def build_dim_location(df_stg: pd.DataFrame) -> pd.DataFrame:
     dim_location = (
         df_stg[[
-            "Customer Country",
-            "Customer City",
             "Order City",
             "Order Region",
             "Market",
             "Latitude",
             "Longitude",
         ]]
-    .drop_duplicates()
-    .reset_index(drop=True)
+        .drop_duplicates()
+        .reset_index(drop=True)
     )
-    dim_location["location_id"]= dim_location.index + 1
+    dim_location["location_id"] = dim_location.index + 1
+
     dim_location = dim_location[[
         "location_id",
-        "Customer Country",
-        "Customer City",
         "Order City",
         "Order Region",
         "Market",
         "Latitude",
         "Longitude",
     ]]
+
     return dim_location
+
 
 def build_dim_shipping(df_stg):
     dim_shipping = (
@@ -192,16 +191,14 @@ def build_fact_orders(df_stg, dim_time):
         "Days for shipment (scheduled)": "days_shipping_sched",
     })
 
-    # NORMALISER order_date
+    # NORMALISER order_date et lier à dim_time
     fact["order_date"] = pd.to_datetime(fact["order_date"]).dt.normalize()
-    
-    # join avec dim_time
-    fact = fact.merge(
+    fact= fact.merge(
         dim_time[["date_id", "order_date"]],
         on="order_date",
-        how="left"
+        how="left",
     )
-
+    
     # mesures dérivées
     fact["delay_days"] = fact["days_shipping_real"] - fact["days_shipping_sched"]
     fact["margin_ratio"] = fact.apply(
@@ -225,10 +222,19 @@ def main():
     fact_orders = build_fact_orders(df_stg, dim_time)
     
     # === CHECKS QUALITE ===
-    assert len(fact_orders) == len(df_stg)
-    assert fact_orders["customer_id"].isin(dim_customer["customer_id"]).all
-    assert fact_orders["product_id"].isin(dim_product["product_id"]).all()
-
+    # 1) même nombre de lignes staging / fact (pas de perte de lignes)
+    assert len(fact_orders) == len(df_stg), "Mismatch rows between staging and fact_orders"
+    
+     # 2) toutes les customer_id de la fact existent dans dim_customer
+    assert fact_orders["customer_id"].isin(dim_customer["customer_id"]).all, "Fact has customer_id not present in dim_customer"
+    
+     # 3) toutes les product_id de la fact existent dans dim_product
+    assert fact_orders["product_id"].isin(dim_product["product_id"]).all(), "Fact has product_id not present in dim_product"
+    
+    # 4) pas de NULL dans les clés principales
+    assert fact_orders["customer_id"].notna().all(), "NULL customer_id in fact_orders"
+    assert fact_orders["product_id"].notna().all(), "NULL product_id in fact_orders"
+    
     dim_customer.to_csv(PROCESSED_DIR / "dim_customer.csv", index=False)
     dim_product.to_csv(PROCESSED_DIR / "dim_product.csv", index=False)
     dim_time.to_csv(PROCESSED_DIR / "dim_time.csv", index=False)
